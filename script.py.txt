@@ -1,0 +1,82 @@
+import pandas as pd
+import pyodbc
+
+# Veri setini okuyoruz
+df = pd.read_csv('C:/Users/tahab/OneDrive/Masaüstü/pythonProject4/veriseti/data.csv')
+
+# Veri setinin bir kopyasını oluşturuyoruz
+df_updated = df.copy()
+
+# Ülkelerin minimum günlük aşılama sayılarını alıyoruz
+min_daily_vaccinations = df_updated.groupby('country')['daily_vaccinations'].min().reset_index()
+min_daily_vaccinations.columns = ['country', 'min_daily_vaccinations']
+
+# Eksik değerleri dolduruyoruz
+df_updated['daily_vaccinations'] = df_updated['daily_vaccinations'].fillna(df_updated.merge(min_daily_vaccinations, on='country', how='left')['min_daily_vaccinations'])
+
+# Eğer bir ülkenin hiç günlük aşılama verisi yoksa, '0' ile dolduruyoruz
+df_updated['daily_vaccinations'] = df_updated['daily_vaccinations'].fillna(0)
+
+# En yüksek günlük medyan aşılama sayısına sahip ilk 3 ülkeyi buluyoruz
+top_countries = df_updated.groupby('country')['daily_vaccinations'].median().nlargest(3).index.tolist()
+print("En yüksek günlük medyan aşılama sayısına sahip ilk 3 ülke:")
+print(top_countries)
+
+# Belirli bir tarihte yapılan toplam aşı sayısını hesaplıyoruz (1/6/2021)
+total_vaccinations_on_date = df_updated[df_updated['date'] == '1/6/2021']['daily_vaccinations'].sum()
+print("1/6/2021 tarihinde yapılan toplam aşı sayısı:", total_vaccinations_on_date)
+
+# Sonuçları yazdırıyoruz
+print("Güncellenmiş veri seti:")
+print(df_updated.head())
+
+# 750. veriyi yazdırıyoruz
+print("750. Veri:")
+print(df_updated.iloc[750]) 
+
+
+# SQL Server'a bağlanmak için gerekli bilgiler
+server = '.'
+database = 'countryvaccinationstats'
+username = ''
+password = ''
+
+# SQL Server'a bağlantı dizesi oluşturma
+conn_str = (
+    f'DRIVER=SQL Server;'
+    f'SERVER={server};'
+    f'DATABASE={database};'
+    f'UID={username};'
+    f'PWD={password};'
+)
+
+# Bağlantıyı kurma
+conn = pyodbc.connect(conn_str)
+
+# SQL sorgusu
+sql_query = 
+WITH CountryMedians AS (
+    SELECT
+        country,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY daily_vaccinations) OVER (PARTITION BY country) AS MedianDailyVaccinations
+    FROM
+        dbo.data
+)
+UPDATE dbo.data
+SET daily_vaccinations = cm.MedianDailyVaccinations
+FROM
+    dbo.data yt
+    JOIN CountryMedians cm ON yt.country = cm.country
+WHERE
+    daily_vaccinations IS NULL;
+
+
+# Sorguyu çalıştırma
+cursor = conn.cursor()
+cursor.execute(sql_query)
+conn.commit()
+
+# Bağlantıyı kapatma
+conn.close()
+
+print("SQL sorgusu başarıyla çalıştırıldı.")
